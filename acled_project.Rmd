@@ -1,0 +1,114 @@
+---
+title: "acled data"
+author: "Fabio Votta"
+date: "25 8 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## packages
+
+```{r}
+pacman::p_load(tidyverse, ggmap, gganimate, rgdal)
+```
+
+## data
+
+
+```{r pressure, echo=FALSE}
+acled <- read_csv("data/ACLED.csv")
+
+acled
+```
+## map
+
+```{r}
+borders <- c(left = -20, bottom = -35, right = 128, top = 42)
+
+get_stamenmap(borders, #zoom = 5,
+              maptype = "terrain-lines",
+              source = "stamen") %>% ggmap()
+
+ggsave(filename = "images/static_map.png", height = 20, width = 20)
+```
+
+
+# Map Preprare
+
+```{r}
+library(httr)     # getting data
+library(rgdal)    # working with shapefile
+library(dplyr)    # awesome data manipulation
+library(readr)    # faster reading of CSV data
+library(stringi)  # string manipulation
+library(stringr)  # string manipulation
+library(tidyr)    # reshaping data
+library(grid)     # for 'unit'
+library(scales)   # for 'percent'
+library(ggplot2)  # plotting
+library(ggthemes) # theme_map
+ 
+# this ensures you only download the shapefile once and hides
+# errors and warnings. remove `try` and `invisible` to see messages
+try(invisible(GET("http://www.pewglobal.org/wp-content/lib/js/world-geo.json",
+                  write_disk("world-geo.json"))), silent=TRUE)
+ 
+# use ogrListLayers("world-geo.json") to see file type & 
+# layer info to use in the call to readOGR
+#ogrListLayers("world-geo.json")
+world <- rgdal::readOGR("world-geo.json")
+world_wt <- spTransform(world, CRS("+proj=robin"))
+world_map <- fortify(world_wt)
+
+world_map %>%
+  left_join(data_frame(id=rownames(world@data), name=world@data$name)) %>%
+  select(-id) %>%
+  rename(id=name) -> world_map
+
+world_map %<>% 
+  mutate(id_new = countrycode::countrycode(id, "country.name", "country.name")) %>% 
+  mutate(id = ifelse(is.na(id_new), id, id_new)) %>% 
+  select(-id_new)
+
+save(world_map, file = "data/world_map.Rdata")
+
+```
+
+## Actual Map
+
+```{r}
+
+load("data/world_map.Rdata")
+
+
+acled %<>% 
+  mutate(longitude = longitude*100000) %>% 
+  mutate(latitude = latitude*100000)
+
+world_map %>% 
+  ggplot() +
+  geom_map(map = world_map,
+         aes(x = long, y = lat, group = group, map_id = id),
+         color = "#7f7f7f", fill = "gray80") +
+  geom_point(data = acled, aes(longitude, latitude, alpha = fatalities, size = fatalities)) +
+  theme_void() +
+#  scale_fill_gradient(low = "red", high = "blue") + 
+  coord_equal()
+
+
+ggsave(filename = "images/static_map2.png", height = 6, width = 12) 
+
+# world_map %>% 
+#   filter(id == "United States")
+# 
+# macro %>% 
+#   filter(str_detect(cntry, "United"))
+
+# 
+# world_map %<>% 
+#   mutate(long = long/100000) %>% 
+#   mutate(lat = lat/100000)
+```
